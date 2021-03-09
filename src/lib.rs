@@ -1,6 +1,8 @@
 use chrono::prelude::*;
 use std::fmt;
 
+pub mod schedules;
+
 pub struct Block {
     start_time: NaiveTime,
     end_time: NaiveTime,
