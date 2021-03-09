@@ -1,9 +1,20 @@
 use chrono::prelude::*;
 use Weekday::*;
 
+use clap::*;
+
 use unicode_prettytable::*;
 
 use unicode_schedule;
+
+fn create_cli() -> App<'static, 'static> {
+    clap_app!(show_schedule =>
+        (version: crate_version!())
+        (author: crate_authors!())
+        (about: crate_description!())
+        (@arg SHOW_REMAINING: -r --remaining "Only show blocks remaining in the day")
+    )
+}
 
 /// Takes a string representing a Time and parses it
 /// The string does not contain period (AM/PM) information, so the function will determine it on
@@ -22,6 +33,11 @@ fn parse_time(string: &str) -> Option<NaiveTime> {
 }
 
 fn main() {
+    let cli = create_cli();
+    let matches = cli.get_matches();
+
+    let only_remaining = matches.is_present("SHOW_REMAINING");
+
     let local = Local::now();
     let day = local.weekday();
 
@@ -40,33 +56,49 @@ fn main() {
         let current_time = local.time();
 
         let formatted_blocks = {
-            let blocks_iterator = base_blocks
-                .into_iter()
-                .skip_while(|row| {
-                    let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
-                    let start_time_string = times[0].trim_end();
-                    let end_time_string = times[1].trim_start();
+            let blocks_iterator = base_blocks.into_iter();
 
-                    let start_time = parse_time(start_time_string).unwrap();
-                    let end_time = parse_time(end_time_string).unwrap();
+            // this is the only way to conditionally iterate over iterators
+            // have all of the options there, but only have one of them yield values
+            let (standard_iterator, skip_iterator) = if only_remaining {
+                (
+                    None,
+                    Some(blocks_iterator.skip_while(|row| {
+                        let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
+                        let start_time_string = times[0].trim_end();
+                        let end_time_string = times[1].trim_start();
 
-                    // Block struct currently isn't necessary, but may be in the future
-                    let block = unicode_schedule::Block::new(start_time, end_time);
+                        let start_time = parse_time(start_time_string).unwrap();
+                        let end_time = parse_time(end_time_string).unwrap();
 
-                    !block.contains(&current_time)
-                })
-                .map(|row| row.to_vec());
+                        // Block struct currently isn't necessary, but may be in the future
+                        let block = unicode_schedule::Block::new(start_time, end_time);
 
+                        !block.contains(&current_time)
+                    })),
+                )
+            } else {
+                (Some(blocks_iterator), None)
+            };
+
+            // Conditionally iterate over one of several possible iterators
+            // https://stackoverflow.com/a/52064434
             vec![vec!["Name", "Time"]]
                 .into_iter()
-                .chain(blocks_iterator)
+                .chain(
+                    skip_iterator
+                        .into_iter()
+                        .flatten()
+                        .chain(standard_iterator.into_iter().flatten())
+                        .map(|row| row.to_vec()),
+                )
                 .collect::<Vec<_>>()
         };
 
         formatted_blocks
     };
 
-    if schedule.len() == 1 {
+    if only_remaining && schedule.len() == 1 {
         println!("School is over!");
         return;
     }
