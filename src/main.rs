@@ -3,13 +3,13 @@ use Weekday::*;
 
 use unicode_prettytable::*;
 
-use show_schedule;
+use unicode_schedule;
 
 fn main() {
     let local = Local::now();
     let day = local.weekday();
 
-    use show_schedule::schedules::*;
+    use unicode_schedule::schedules::*;
     let schedule = {
         let base_blocks = match day {
             Mon | Tue => [FULL_SCHEDULE_BASE, AFTERNOON_SCHEDULE_C].concat(),
