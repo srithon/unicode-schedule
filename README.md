@@ -23,3 +23,6 @@ $ show_schedule
 └────────┴──────────────┘
 ```
 
+## Screenshot with Font Ligatures
+
+![Screenshot of Output](./images/output.png "Font: JetBrains Mono")
