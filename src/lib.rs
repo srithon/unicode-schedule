@@ -21,7 +21,10 @@ impl Block {
     }
 
     pub fn contains(&self, time: &NaiveTime) -> bool {
-        self.end_time.signed_duration_since(*time) < self.length
+        let duration = self.end_time.signed_duration_since(*time);
+
+        // not before the block started and not after the block ended
+        duration < self.length && duration > chrono::Duration::zero()
     }
 }
 
