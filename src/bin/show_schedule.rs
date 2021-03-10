@@ -2,6 +2,7 @@ use chrono::prelude::*;
 use Weekday::*;
 
 use clap::*;
+use colored::*;
 
 use unicode_prettytable::*;
 
@@ -55,7 +56,26 @@ fn main() {
 
         let current_time = local.time();
 
-        let formatted_blocks = {
+        let current_block_index = base_blocks.iter().position(|row| {
+            let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
+            let start_time_string = times[0].trim_end();
+            let end_time_string = times[1].trim_start();
+
+            let start_time = parse_time(start_time_string).unwrap();
+            let end_time = parse_time(end_time_string).unwrap();
+
+            // Block struct currently isn't necessary, but may be in the future
+            let block = unicode_schedule::Block::new(start_time, end_time);
+
+            !block.contains(&current_time)
+        });
+
+        if only_remaining && current_block_index.is_none() {
+            println!("School is over!");
+            return;
+        }
+
+        let mut formatted_blocks = {
             let blocks_iterator = base_blocks.into_iter();
 
             // this is the only way to conditionally iterate over iterators
@@ -63,19 +83,8 @@ fn main() {
             let (standard_iterator, skip_iterator) = if only_remaining {
                 (
                     None,
-                    Some(blocks_iterator.skip_while(|row| {
-                        let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
-                        let start_time_string = times[0].trim_end();
-                        let end_time_string = times[1].trim_start();
-
-                        let start_time = parse_time(start_time_string).unwrap();
-                        let end_time = parse_time(end_time_string).unwrap();
-
-                        // Block struct currently isn't necessary, but may be in the future
-                        let block = unicode_schedule::Block::new(start_time, end_time);
-
-                        !block.contains(&current_time)
-                    })),
+                    // unwrap because check already done earlier
+                    Some(blocks_iterator.skip(current_block_index.unwrap())),
                 )
             } else {
                 (Some(blocks_iterator), None)
@@ -83,25 +92,29 @@ fn main() {
 
             // Conditionally iterate over one of several possible iterators
             // https://stackoverflow.com/a/52064434
-            vec![vec!["Name", "Time"]]
+            vec![vec!["Name".to_owned(), "Time".to_owned()]]
                 .into_iter()
                 .chain(
                     skip_iterator
                         .into_iter()
                         .flatten()
                         .chain(standard_iterator.into_iter().flatten())
-                        .map(|row| row.to_vec()),
+                        .map(|row| row.to_vec().into_iter().map(|x| x.to_owned()).collect::<Vec<_>>()),
                 )
                 .collect::<Vec<_>>()
         };
 
+        // color current block
+        if let Some(index) = current_block_index {
+            let current_row = formatted_blocks.get_mut(index + 1).unwrap();
+
+            for s in current_row.iter_mut() {
+                *s = s.bold().red().to_string();
+            }
+        }
+
         formatted_blocks
     };
-
-    if only_remaining && schedule.len() == 1 {
-        println!("School is over!");
-        return;
-    }
 
     let table = unicode_prettytable::TableBuilder::default()
         .header(
