@@ -4,6 +4,10 @@ Command-line utility for displaying the SBHS remote schedule for the current day
 
 ```shell
 $ show_schedule --help
+show_schedule 0.2.0
+Sridaran Thoniyil <sri7thon@gmail.com>
+
+
 show_schedule [FLAGS]
 
 FLAGS:
