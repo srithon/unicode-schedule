@@ -13,7 +13,7 @@ fn create_cli() -> App<'static, 'static> {
         (version: crate_version!())
         (author: crate_authors!())
         (about: crate_description!())
-        (@arg SHOW_REMAINING: -r --remaining "Only show blocks remaining in the day")
+        (@arg SHOW_BLOCKS_REMAINING: -b --("blocks-remaining") "Only show blocks remaining in the day")
     )
 }
 
@@ -37,7 +37,7 @@ fn main() {
     let cli = create_cli();
     let matches = cli.get_matches();
 
-    let only_remaining = matches.is_present("SHOW_REMAINING");
+    let only_remaining = matches.is_present("SHOW_BLOCKS_REMAINING");
 
     let local = Local::now();
     let day = local.weekday();
