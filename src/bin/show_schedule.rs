@@ -45,10 +45,17 @@ fn main() {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
 
-    let mut header_table = Table::new();
-    header_table
-        .load_preset(UTF8_FULL)
-        .add_row(vec![local.format("%A")]);
+    let mut header_table = {
+        let mut header = Table::new();
+        header.load_preset(UTF8_FULL);
+
+        let day_cell = local.format("%A").to_cell()
+            .add_attribute(Attribute::Bold);
+
+        header.add_row(vec![day_cell]);
+
+        header
+    };
 
     use unicode_schedule::schedules::*;
 
