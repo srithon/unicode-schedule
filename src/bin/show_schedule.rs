@@ -2,9 +2,9 @@ use chrono::prelude::*;
 use Weekday::*;
 
 use clap::*;
-use colored::*;
 
-use unicode_prettytable::*;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::*;
 
 use unicode_schedule;
 
@@ -42,91 +42,106 @@ fn main() {
     let local = Local::now();
     let day = local.weekday();
 
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL);
+
+    let mut header_table = Table::new();
+    header_table
+        .load_preset(UTF8_FULL)
+        .add_row(vec![local.format("%A")]);
+
     use unicode_schedule::schedules::*;
-    let schedule = {
-        let base_blocks = match day {
-            Mon | Tue => [FULL_SCHEDULE_BASE, AFTERNOON_SCHEDULE_C].concat(),
-            Wed => [HALF_DAY_SCHEDULE].concat(),
-            Thu | Fri => [FULL_SCHEDULE_BASE, AFTERNOON_SCHEDULE_D].concat(),
-            _ => {
-                println!("You don't have school today! Relax!");
-                return;
-            }
-        };
 
-        let current_time = local.time();
-
-        let current_block_index = base_blocks.iter().position(|row| {
-            let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
-            let start_time_string = times[0].trim_end();
-            let end_time_string = times[1].trim_start();
-
-            let start_time = parse_time(start_time_string).unwrap();
-            let end_time = parse_time(end_time_string).unwrap();
-
-            // Block struct currently isn't necessary, but may be in the future
-            let block = unicode_schedule::Block::new(start_time, end_time);
-
-            !block.contains(&current_time)
-        });
-
-        if only_remaining && current_block_index.is_none() {
-            println!("School is over!");
+    let base_blocks = match day {
+        Mon | Tue => [FULL_SCHEDULE_BASE, AFTERNOON_SCHEDULE_C].concat(),
+        Wed => [HALF_DAY_SCHEDULE].concat(),
+        Thu | Fri => [FULL_SCHEDULE_BASE, AFTERNOON_SCHEDULE_D].concat(),
+        _ => {
+            println!("You don't have school today! Relax!");
             return;
         }
+    };
 
-        let mut formatted_blocks = {
-            let blocks_iterator = base_blocks.into_iter();
+    let current_time = local.time();
 
-            // this is the only way to conditionally iterate over iterators
-            // have all of the options there, but only have one of them yield values
-            let (standard_iterator, skip_iterator) = if only_remaining {
-                (
-                    None,
-                    // unwrap because check already done earlier
-                    Some(blocks_iterator.skip(current_block_index.unwrap())),
-                )
-            } else {
-                (Some(blocks_iterator), None)
-            };
+    let current_block_index = base_blocks.iter().position(|row| {
+        let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
+        let start_time_string = times[0].trim_end();
+        let end_time_string = times[1].trim_start();
 
-            // Conditionally iterate over one of several possible iterators
-            // https://stackoverflow.com/a/52064434
-            vec![vec!["Name".to_owned(), "Time".to_owned()]]
-                .into_iter()
-                .chain(
-                    skip_iterator
-                        .into_iter()
-                        .flatten()
-                        .chain(standard_iterator.into_iter().flatten())
-                        .map(|row| row.to_vec().into_iter().map(|x| x.to_owned()).collect::<Vec<_>>()),
-                )
-                .collect::<Vec<_>>()
+        let start_time = parse_time(start_time_string).unwrap();
+        let end_time = parse_time(end_time_string).unwrap();
+
+        // Block struct currently isn't necessary, but may be in the future
+        let block = unicode_schedule::Block::new(start_time, end_time);
+
+        block.contains(&current_time)
+    });
+
+    if only_remaining && current_block_index.is_none() {
+        println!("School is over!");
+        return;
+    }
+
+    macro_rules! add_row {
+        ($row:ident) => {
+            table.add_row($row.to_vec());
         };
+    }
 
-        // color current block
-        if let Some(index) = current_block_index {
-            let current_row = formatted_blocks.get_mut(index + 1).unwrap();
-
-            for s in current_row.iter_mut() {
-                *s = s.bold().red().to_string();
+    // add passed blocks
+    // if you want to print everything, print the ones leading up to the current block
+    if let Some(current_block_index) = current_block_index {
+        // add passed cells
+        if only_remaining {
+            for row in &base_blocks[0..current_block_index] {
+                // TODO style each row
+                add_row!(row);
             }
         }
 
-        formatted_blocks
-    };
+        // add current row
+        let current_row = &base_blocks[current_block_index];
+        table.add_row(
+            current_row
+                .into_iter()
+                .map(|text| Cell::new(text).add_attribute(Attribute::Bold)),
+        );
 
-    let table = unicode_prettytable::TableBuilder::default()
-        .header(
-            HeaderBuilder::default()
-                .double_bar(true)
-                .centered_text(true)
-                .build()
-                .unwrap(),
-        )
-        .rows(&schedule)
-        .build()
-        .unwrap();
+        // add rest of cells
+        for row in &base_blocks[current_block_index + 1..base_blocks.len()] {
+            add_row!(row);
+        }
+    } else {
+        // add all cells
+        for row in &base_blocks[..] {
+            add_row!(row);
+        }
+    }
 
-    println!("{}", table)
+    let table_string = table.to_string();
+
+    let header_column = header_table.get_column_mut(0).unwrap();
+    header_column.set_cell_alignment(CellAlignment::Center);
+    header_column.set_constraint(ColumnConstraint::Width(
+        // subtract 2 because we do not count the left and right separators
+        (table_string.lines().nth(0).unwrap().chars().count() - 2) as u16,
+    ));
+
+    // only take the top two lines in the header table output
+    // we only want the "header" of the header
+    let header_string =
+        header_table
+            .to_string()
+            .lines()
+            .take(2)
+            // effectively join('\n')
+            .fold(String::new(), |mut a, b| {
+                a.push_str(b);
+                a.push('\n');
+                a
+            });
+
+    print!("{}", header_string);
+    println!("{}", table_string)
 }
