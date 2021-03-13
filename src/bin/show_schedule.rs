@@ -138,7 +138,7 @@ fn main() {
     // if you want to print everything, print the ones leading up to the current block
     if let Some(current_block_index) = current_block_index {
         // add passed cells
-        if only_remaining {
+        if !only_remaining {
             for row in &base_blocks[0..current_block_index] {
                 table.add_row(row.into_iter().map(|text| {
                     Cell::new(text)
