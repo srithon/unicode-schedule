@@ -61,13 +61,12 @@ fn parse_time(string: &str) -> Option<NaiveTime> {
     }
 }
 
-fn main() {
-    let cli = create_cli();
-    let matches = cli.get_matches();
-
+pub fn with_params<T: TimeZone>(matches: ArgMatches, local: DateTime<T>)
+where
+    <T as chrono::TimeZone>::Offset: std::fmt::Display,
+{
     let only_remaining = matches.is_present("SHOW_BLOCKS_REMAINING");
 
-    let local = Local::now();
     let day = local.weekday();
 
     let mut table = Table::new();
@@ -208,4 +207,13 @@ fn main() {
 
     print!("{}", header_string);
     println!("{}", table_string)
+}
+
+fn main() {
+    let cli = create_cli();
+    let matches = cli.get_matches();
+
+    let local = Local::now();
+
+    with_params(matches, local)
 }
