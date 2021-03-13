@@ -8,6 +8,34 @@ use comfy_table::*;
 
 use unicode_schedule;
 
+mod colors {
+    use comfy_table::Color;
+
+    pub static FINISHED_BLOCK: Color = Color::Rgb {
+        r: 186,
+        g: 28,
+        b: 96,
+    };
+
+    pub static CURRENT_BLOCK: Color = Color::Rgb {
+        r: 25,
+        g: 117,
+        b: 254,
+    };
+
+    pub static NEXT_BLOCK: Color = Color::Rgb {
+        r: 21,
+        g: 100,
+        b: 217,
+    };
+
+    pub static NOT_STARTED_BLOCK: Color = Color::Rgb {
+        r: 18,
+        g: 85,
+        b: 186,
+    };
+}
+
 fn create_cli() -> App<'static, 'static> {
     clap_app!(show_schedule =>
         (version: crate_version!())
@@ -49,8 +77,7 @@ fn main() {
         let mut header = Table::new();
         header.load_preset(UTF8_FULL);
 
-        let day_cell = local.format("%A").to_cell()
-            .add_attribute(Attribute::Bold);
+        let day_cell = local.format("%A").to_cell().add_attribute(Attribute::Bold);
 
         header.add_row(vec![day_cell]);
 
@@ -71,29 +98,40 @@ fn main() {
 
     let current_time = local.time();
 
-    let current_block_index = base_blocks.iter().position(|row| {
-        let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
-        let start_time_string = times[0].trim_end();
-        let end_time_string = times[1].trim_start();
+    let block_orders = base_blocks
+        .iter()
+        .map(|row| {
+            let times = row[1].split("-").map(str::trim).collect::<Vec<_>>();
+            let start_time_string = times[0].trim_end();
+            let end_time_string = times[1].trim_start();
 
-        let start_time = parse_time(start_time_string).unwrap();
-        let end_time = parse_time(end_time_string).unwrap();
+            let start_time = parse_time(start_time_string).unwrap();
+            let end_time = parse_time(end_time_string).unwrap();
 
-        // Block struct currently isn't necessary, but may be in the future
-        let block = unicode_schedule::Block::new(start_time, end_time);
+            // Block struct currently isn't necessary, but may be in the future
+            unicode_schedule::Block::new(start_time, end_time).check_order(&current_time)
+        })
+        .collect::<Vec<_>>();
 
-        block.contains(&current_time)
-    });
+    let current_block_index = block_orders
+        .iter()
+        .position(|order| matches!(order, unicode_schedule::Order::InProgress));
+
+    let next_block_index = {
+        if let Some(current_block_index) = current_block_index {
+            block_orders
+                .iter()
+                .skip(current_block_index)
+                .position(|order| matches!(order, unicode_schedule::Order::NotStarted))
+                .map(|x| x + current_block_index)
+        } else {
+            None
+        }
+    };
 
     if only_remaining && current_block_index.is_none() {
         println!("School is over!");
         return;
-    }
-
-    macro_rules! add_row {
-        ($row:ident) => {
-            table.add_row($row.to_vec());
-        };
     }
 
     // add passed blocks
@@ -102,27 +140,47 @@ fn main() {
         // add passed cells
         if only_remaining {
             for row in &base_blocks[0..current_block_index] {
-                // TODO style each row
-                add_row!(row);
+                table.add_row(row.into_iter().map(|text| {
+                    Cell::new(text)
+                        .add_attribute(Attribute::Dim)
+                        .bg(colors::FINISHED_BLOCK)
+                }));
             }
         }
 
         // add current row
         let current_row = &base_blocks[current_block_index];
-        table.add_row(
-            current_row
-                .into_iter()
-                .map(|text| Cell::new(text).add_attribute(Attribute::Bold)),
-        );
+        table.add_row(current_row.into_iter().map(|text| {
+            Cell::new(text)
+                .add_attribute(Attribute::Bold)
+                .fg(colors::CURRENT_BLOCK)
+        }));
 
-        // add rest of cells
-        for row in &base_blocks[current_block_index + 1..base_blocks.len()] {
-            add_row!(row);
+        if let Some(next_block_index) = next_block_index {
+            // add next block with styling
+            let next_row = Row::from(base_blocks[next_block_index].into_iter().map(|field| {
+                let cell = Cell::new(field).fg(colors::NEXT_BLOCK);
+
+                cell
+            }));
+
+            table.add_row(next_row);
+
+            // add rest of cells
+            for row in &base_blocks[next_block_index + 1..base_blocks.len()] {
+                table.add_row(Row::from(
+                    row.into_iter()
+                        .map(|field| Cell::new(field).fg(colors::NOT_STARTED_BLOCK)),
+                ));
+            }
         }
     } else {
         // add all cells
         for row in &base_blocks[..] {
-            add_row!(row);
+            table.add_row(Row::from(
+                row.into_iter()
+                    .map(|field| Cell::new(field).fg(colors::NEXT_BLOCK)),
+            ));
         }
     }
 
@@ -137,17 +195,16 @@ fn main() {
 
     // only take the top two lines in the header table output
     // we only want the "header" of the header
-    let header_string =
-        header_table
-            .to_string()
-            .lines()
-            .take(2)
-            // effectively join('\n')
-            .fold(String::new(), |mut a, b| {
-                a.push_str(b);
-                a.push('\n');
-                a
-            });
+    let header_string = header_table
+        .to_string()
+        .lines()
+        .take(2)
+        // effectively join('\n')
+        .fold(String::new(), |mut a, b| {
+            a.push_str(b);
+            a.push('\n');
+            a
+        });
 
     print!("{}", header_string);
     println!("{}", table_string)
