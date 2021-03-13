@@ -3,6 +3,15 @@ use std::fmt;
 
 pub mod schedules;
 
+pub enum Order {
+    /// Block already finished
+    Finished,
+    /// Block is in progress
+    InProgress,
+    /// Block has not begun yet
+    NotStarted
+}
+
 pub struct Block {
     start_time: NaiveTime,
     end_time: NaiveTime,
@@ -20,11 +29,22 @@ impl Block {
         }
     }
 
-    pub fn contains(&self, time: &NaiveTime) -> bool {
+    pub fn check_order(&self, time: &NaiveTime) -> Order {
         let duration = self.end_time.signed_duration_since(*time);
 
-        // not before the block started and not after the block ended
-        duration < self.length && duration > chrono::Duration::zero()
+        if duration > self.length {
+            // duration extends past the beginning of the block
+            // block hasn't started yet
+            Order::NotStarted
+        } else if duration >= chrono::Duration::zero() {
+            // duration between 0 and block length
+            // block is in progress
+            Order::InProgress
+        } else {
+            // the end time of the block has passed
+            // the block has finished
+            Order::Finished
+        }
     }
 }
 
